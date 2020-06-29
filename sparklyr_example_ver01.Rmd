@@ -1,0 +1,115 @@
+---
+title: "SparklyR Example code"
+output: html_notebook
+---
+
+Today we are going to try out the code from the [spraklyr](https://spark.rstudio.com/) website.
+
+Install sparklyr R package and install Spark.  Run the following commands only once. 
+
+Depending on the version of Java you have installed on your computer you many run into a problem.  Hopefully not, but if you do you need to figure out what version of Java you have installed and then install a compatible version of Spark.
+
+After you install sparklyr R package there will be Connections Tab to the right of Environment.
+
+```{r}
+# install.packages("sparklyr")
+# spark_install()
+```
+
+```{r}
+library(pacman)
+
+p_load(sparklyr, tidyverse, nycflights13, Lahman)
+```
+
+Connect to Spark locally.  If Spark is on another machine or on a Hadoop cluster this connection code would be different.
+
+```{r}
+sc <- spark_connect(master = "local")
+```
+
+Copy some data to Spark and make some tables.
+
+```{r}
+iris_tbl <- copy_to(sc, iris)
+flights_tbl <- copy_to(sc, nycflights13::flights, "flights")
+batting_tbl <- copy_to(sc, Lahman::Batting, "batting")
+src_tbls(sc)
+```
+
+Run *dplyr* commands on data tables on Spark.
+
+```{r}
+flights_tbl %>% filter(dep_delay == 2)
+```
+
+Notice the *collect()* command.  This is the same as *disk.frame* code.   The querry is done on Spark and the output is brought into R's environment so a plot can be made.
+
+```{r}
+delay <- flights_tbl %>%
+  group_by(tailnum) %>%
+  summarise(count = n(), dist = mean(distance), delay = mean(arr_delay)) %>%
+  filter(count > 20, dist < 2000, !is.na(delay)) %>%
+  collect
+
+delay %>% ggplot(aes(dist, delay)) +
+  geom_point(aes(size = count), alpha = 1/2) +
+  geom_smooth() +
+  scale_size_area(max_size = 2)
+```
+
+SQL querries can be run directly on Spark.
+
+```{r}
+library(DBI)
+iris_preview <- dbGetQuery(sc, "SELECT * FROM iris LIMIT 10")
+iris_preview
+```
+
+## Machine Learning can be run on Spark.
+
+```{r}
+# copy mtcars into spark
+mtcars_tbl <- copy_to(sc, mtcars)
+
+# transform our data set, and then partition into 'training', 'test'
+partitions <- mtcars_tbl %>%
+  filter(hp >= 100) %>%
+  mutate(cyl8 = cyl == 8) %>%
+  sdf_partition(training = 0.5, test = 0.5, seed = 1099)
+
+# fit a linear model to the training dataset
+fit <- partitions$training %>%
+  ml_linear_regression(response = "mpg", features = c("wt", "cyl"))
+
+summary(fit)
+```
+
+## Cashing data
+
+You can pull data directly in R in memory from Spark.
+
+```{r}
+tbl_cache(sc, "batting")
+```
+
+```{r}
+tbl_uncache(sc, "batting")
+```
+
+## Web interface
+
+```{r}
+spark_web(sc)
+```
+
+
+
+## Exiting Spark
+
+The last thing to do is to disconnect from the Spark server.
+
+```{r}
+spark_disconnect(sc)
+```
+
