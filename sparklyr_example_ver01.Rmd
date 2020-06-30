@@ -76,7 +76,7 @@ mtcars_tbl <- copy_to(sc, mtcars)
 partitions <- mtcars_tbl %>%
   filter(hp >= 100) %>%
   mutate(cyl8 = cyl == 8) %>%
-  sdf_partition(training = 0.5, test = 0.5, seed = 1099)
+  sdf_random_split(training = 0.5, test = 0.5, seed = 1099)
 
 # fit a linear model to the training dataset
 fit <- partitions$training %>%
